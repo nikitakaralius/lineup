@@ -114,16 +114,9 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 	}
 
 	// Security: Ensure only the poll creator can input topic
-	// The state should contain the original creator's user ID
-	// Extract creator ID from the state key
-	var creatorID int64
-	var chatID int64
-	if _, err := fmt.Sscanf(stateKey, "%d_%d", &chatID, &creatorID); err != nil {
-		return false
-	}
-
-	// Only the original poll creator can input custom values
-	if msg.From.ID != creatorID {
+	expectedUserID := msg.From.ID
+	actualStateKey := fmt.Sprintf("%d_%d", msg.Chat.ID, expectedUserID)
+	if stateKey != actualStateKey {
 		return false
 	}
 
@@ -243,13 +236,17 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 		state.Duration = duration
 		state.Step = "confirm"
 
-		// Show confirmation (clean interface without navigation buttons after custom input)
+		// Show confirmation
 		text := fmt.Sprintf("✅ *Подтверждение опроса*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n\nВсё правильно?",
 			state.Topic, formatDuration(duration))
 
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
 				tgbotapi.NewInlineKeyboardButtonData("✅ Создать", "poll_confirm"),
+				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "poll_back"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
 			),
 		)
 

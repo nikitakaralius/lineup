@@ -482,10 +482,8 @@ func updateQueueMessage(ctx context.Context, bot *tgbotapi.BotAPI, pollsRepo *po
 func createQueueKeyboard(pollID string) tgbotapi.InlineKeyboardMarkup {
 	return tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🙋 Войти", fmt.Sprintf("queue_join:%s", pollID)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🚪 Выйти", fmt.Sprintf("queue_exit:%s", pollID)),
+			tgbotapi.NewInlineKeyboardButtonData("🙋 Присоединиться", fmt.Sprintf("queue_join:%s", pollID)),
+			tgbotapi.NewInlineKeyboardButtonData("🚪 Выйти из очереди", fmt.Sprintf("queue_exit:%s", pollID)),
 		),
 	)
 }

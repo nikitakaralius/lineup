@@ -42,10 +42,8 @@ func (w *FinishPollWorker) Work(ctx context.Context, job *river.Job[polls.Finish
 	// Create inline keyboard for queue management
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🙋 Войти", fmt.Sprintf("queue_join:%s", args.PollID)),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🚪 Выйти", fmt.Sprintf("queue_exit:%s", args.PollID)),
+			tgbotapi.NewInlineKeyboardButtonData("🙋 Присоединиться", fmt.Sprintf("queue_join:%s", args.PollID)),
+			tgbotapi.NewInlineKeyboardButtonData("🚪 Выйти из очереди", fmt.Sprintf("queue_exit:%s", args.PollID)),
 		),
 	)
 
