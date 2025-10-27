@@ -77,7 +77,7 @@ func formatResults(topic string, voters []voters.TelegramVoterDTO) string {
 	sb.WriteString("\n\n")
 
 	if len(voters) == 0 {
-		sb.WriteString("😔 *Никто не идет*\n\n")
+		sb.WriteString("😔 *Никто не участвует в опросе*\n\n")
 		sb.WriteString("💡 Используйте кнопки ниже, чтобы присоединиться к очереди!")
 		return sb.String()
 	}

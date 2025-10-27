@@ -113,13 +113,6 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 		return false
 	}
 
-	// Security: Ensure only the poll creator can input topic
-	expectedUserID := msg.From.ID
-	actualStateKey := fmt.Sprintf("%d_%d", msg.Chat.ID, expectedUserID)
-	if stateKey != actualStateKey {
-		return false
-	}
-
 	if state.Step == "topic" {
 		// User entered topic
 		topic := strings.TrimSpace(msg.Text)
@@ -132,15 +125,6 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 
 		state.Topic = topic
 		state.Step = "duration"
-
-		// Update the initial poll creation message to remove cancel button
-		if state.MessageID != 0 {
-			updatedText := fmt.Sprintf("📝 *Создание опроса*\n\n✅ **Тема:** %s", topic)
-			edit := tgbotapi.NewEditMessageText(msg.Chat.ID, state.MessageID, updatedText)
-			edit.ParseMode = "Markdown"
-			edit.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}}
-			bot.Send(edit)
-		}
 
 		// Show duration selection
 		text := fmt.Sprintf("⏰ *Выбор длительности опроса*\n\n📋 **Тема:** %s\n\nВыберите длительность:", topic)
@@ -173,87 +157,15 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 		return true
 	}
 
-	if state.Step == "duration_custom" {
-		// User entered custom duration
-		durationStr := strings.TrimSpace(msg.Text)
-		if durationStr == "" {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Длительность не может быть пустой. Попробуйте ещё раз:")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-
-		// Validate and parse duration
-		duration, err := time.ParseDuration(durationStr)
-		if err != nil {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Неверный формат длительности. Используйте формат: `30m`, `2h`, `1h30m`\n\nПопробуйте ещё раз:")
-			reply.ParseMode = "Markdown"
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-
-		// Check reasonable duration limits (1 minute to 7 days)
-		if duration < time.Minute {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Длительность слишком короткая. Минимум: 1 минута.")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-		if duration > 7*24*time.Hour {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Длительность слишком большая. Максимум: 7 дней.")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-
-		state.Duration = duration
-		state.Step = "confirm"
-
-		// Show confirmation
-		text := fmt.Sprintf("✅ *Подтверждение опроса*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n\nВсё правильно?",
-			state.Topic, formatDuration(duration))
-
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("✅ Создать", "poll_confirm"),
-				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "poll_back"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
-			),
-		)
-
-		reply := tgbotapi.NewMessage(msg.Chat.ID, text)
-		reply.ParseMode = "Markdown"
-		reply.ReplyMarkup = keyboard
-		bot.Send(reply)
-		return true
-	}
-
 	return false
 }
 
 func showInteractivePollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, userID int64) {
 	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
+	pollCreationStates[stateKey] = &PollCreationState{Step: "topic"}
 
-	text := "📝 *Создание опроса*\n\nВыберите тему опроса или введите свою:"
+	text := "📝 *Создание опроса*\n\nВведите тему опроса:"
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 Анализ данных", "poll_topic:Анализ данных"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔒 Информационная безопасность", "poll_topic:Информационная безопасность"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🤖 Промпт инжениринг", "poll_topic:Промпт инжениринг"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎨 Интерфейсы", "poll_topic:Интерфейсы"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🏛️ Сбер", "poll_topic:Сбер"),
-		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
 		),
@@ -262,26 +174,12 @@ func showInteractivePollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
-	sent, err := bot.Send(msg)
-	if err != nil {
-		log.Printf("Error sending poll creation message: %v", err)
-		return
-	}
-
-	// Store state with message ID for later deletion
-	pollCreationStates[stateKey] = &PollCreationState{Step: "topic", MessageID: sent.MessageID}
+	bot.Send(msg)
 }
 
 func createPoll(ctx context.Context, bot *tgbotapi.BotAPI, store *polls.Repository, msg *tgbotapi.Message, topic string, dur time.Duration, pollsService polls.Service) {
-	// Create enhanced poll question with duration and end time
-	endTime := time.Now().UTC().Add(dur)
-	pollQuestion := fmt.Sprintf("📋 Тема: %s\n⏰ Длительность: %s\n🕐 Завершится: %s",
-		topic,
-		formatDuration(dur),
-		formatTimeInMSK(endTime))
-
 	// Create poll with Russian options
-	pollCfg := tgbotapi.NewPoll(msg.Chat.ID, pollQuestion, []string{"Иду", "Не иду"}...)
+	pollCfg := tgbotapi.NewPoll(msg.Chat.ID, topic, []string{"участвую", "не участвую"}...)
 	pollCfg.IsAnonymous = false
 	pollCfg.AllowsMultipleAnswers = false
 	sent, err := bot.Send(pollCfg)
@@ -321,10 +219,14 @@ func createPoll(ctx context.Context, bot *tgbotapi.BotAPI, store *polls.Reposito
 			log.Printf("enqueue finish poll error: %v", err)
 		}
 	}
-}
 
-func formatTimeInMSK(t time.Time) string {
-	// Convert UTC time to Moscow Standard Time (UTC+3)
-	msk := time.FixedZone("MSK", 3*60*60)
-	return t.In(msk).Format("15:04 02.01.2006 MSK")
+	// Send confirmation message
+	confirmText := fmt.Sprintf("✅ *Опрос создан!*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n🕐 **Завершится:** %s",
+		topic,
+		formatDuration(dur),
+		p.EndsAt.Format("15:04 02.01.2006"))
+
+	confirmMsg := tgbotapi.NewMessage(msg.Chat.ID, confirmText)
+	confirmMsg.ParseMode = "Markdown"
+	bot.Send(confirmMsg)
 }

@@ -14,10 +14,9 @@ import (
 
 // PollCreationState represents the current state of poll creation
 type PollCreationState struct {
-	Step      string // "topic", "duration", "confirm"
-	Topic     string
-	Duration  time.Duration
-	MessageID int // ID of the initial poll creation message to delete after topic input
+	Step     string // "topic", "duration", "confirm"
+	Topic    string
+	Duration time.Duration
 }
 
 // In-memory storage for poll creation states (in production, consider using Redis or database)
@@ -48,18 +47,12 @@ func HandleCallback(
 	switch {
 	case data == "create_poll":
 		handleStartPollCreation(ctx, bot, chatID, messageID, userID)
-	case strings.HasPrefix(data, "poll_topic:"):
-		handleTopicSelection(ctx, bot, chatID, messageID, userID, data)
 	case strings.HasPrefix(data, "poll_duration:"):
 		handleDurationSelection(ctx, bot, pollsRepo, chatID, messageID, userID, data, pollsService)
-	case data == "poll_duration_custom":
-		handleCustomDurationInput(ctx, bot, chatID, messageID, userID)
 	case data == "poll_confirm":
 		handleConfirmPoll(ctx, bot, pollsRepo, chatID, messageID, userID, pollsService)
 	case data == "poll_back":
 		handleBackToPollCreation(ctx, bot, chatID, messageID, userID)
-	case data == "poll_back_to_duration":
-		handleBackToDurationSelection(ctx, bot, chatID, messageID, userID)
 	case data == "poll_cancel":
 		handleCancelPollCreation(ctx, bot, chatID, messageID, userID)
 	case strings.HasPrefix(data, "queue_exit:"):
@@ -86,34 +79,6 @@ func handleStartPollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID i
 	edit.ParseMode = "Markdown"
 	edit.ReplyMarkup = &keyboard
 	bot.Send(edit)
-}
-
-func handleTopicSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64, data string) {
-	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-	state, exists := pollCreationStates[stateKey]
-	if !exists || state.Step != "topic" {
-		return
-	}
-
-	// Extract topic from callback data
-	parts := strings.Split(data, ":")
-	if len(parts) != 2 {
-		return
-	}
-
-	topic := parts[1]
-	state.Topic = topic
-	state.Step = "duration"
-
-	// Update the message to show selected topic and remove cancel button
-	updatedText := fmt.Sprintf("📝 *Создание опроса*\n\n✅ **Тема:** %s", topic)
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, updatedText)
-	edit.ParseMode = "Markdown"
-	edit.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}}
-	bot.Send(edit)
-
-	// Show duration selection
-	showDurationSelection(ctx, bot, chatID, messageID, userID, topic)
 }
 
 func handleDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, pollsRepo *polls.Repository, chatID int64, messageID int, userID int64, data string, pollsService polls.Service) {
@@ -166,15 +131,8 @@ func handleConfirmPoll(ctx context.Context, bot *tgbotapi.BotAPI, pollsRepo *pol
 		return
 	}
 
-	// Create enhanced poll question with duration and end time
-	endTime := time.Now().UTC().Add(state.Duration)
-	pollQuestion := fmt.Sprintf("📋 Тема: %s\n⏰ Длительность: %s\n🕐 Завершится: %s",
-		state.Topic,
-		formatDuration(state.Duration),
-		formatTimeInMSK(endTime))
-
 	// Create poll with Russian options
-	pollCfg := tgbotapi.NewPoll(chatID, pollQuestion, []string{"Иду", "Не иду"}...)
+	pollCfg := tgbotapi.NewPoll(chatID, state.Topic, []string{"участвую", "не участвую"}...)
 	pollCfg.IsAnonymous = false
 	pollCfg.AllowsMultipleAnswers = false
 	sent, err := bot.Send(pollCfg)
@@ -219,9 +177,13 @@ func handleConfirmPoll(ctx context.Context, bot *tgbotapi.BotAPI, pollsRepo *pol
 		}
 	}
 
-	// Update the creation message to show completion
-	completionText := "✅ *Опрос успешно создан!*"
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, completionText)
+	// Show success message
+	text := fmt.Sprintf("✅ *Опрос создан успешно!*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n🕐 **Завершится:** %s",
+		state.Topic,
+		formatDuration(state.Duration),
+		p.EndsAt.Format("15:04 02.01.2006"))
+
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
 	edit.ParseMode = "Markdown"
 	edit.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}}
 	bot.Send(edit)
@@ -244,18 +206,6 @@ func handleBackToPollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID 
 	}
 }
 
-func handleBackToDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
-	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-	state, exists := pollCreationStates[stateKey]
-	if !exists || state.Step != "duration_custom" {
-		return
-	}
-
-	// Go back to duration selection
-	state.Step = "duration"
-	showDurationSelection(ctx, bot, chatID, messageID, userID, state.Topic)
-}
-
 func handleCancelPollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
 	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
 	delete(pollCreationStates, stateKey)
@@ -266,36 +216,8 @@ func handleCancelPollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID 
 	bot.Send(edit)
 }
 
-func handleCustomDurationInput(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
-	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-	state, exists := pollCreationStates[stateKey]
-	if !exists || state.Step != "duration" {
-		return
-	}
-
-	// Update state to custom duration input
-	state.Step = "duration_custom"
-
-	// Show custom duration input prompt
-	text := fmt.Sprintf("✏️ *Ввод длительности*\n\n📋 **Тема:** %s\n\nВведите длительность в формате:\n• `30m` - минуты\n• `2h` - часы\n• `1h30m` - комбинированный формат\n• `24h` - сутки\n\nПример: `45m`, `2h30m`, `6h`", state.Topic)
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "poll_back_to_duration"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
-		),
-	)
-
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
-	edit.ParseMode = "Markdown"
-	edit.ReplyMarkup = &keyboard
-	bot.Send(edit)
-}
-
 func showDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64, topic string) {
-	text := fmt.Sprintf("⏰ *Выбор длительности опроса*\n\n📋 **Тема:** %s\n\nВыберите длительность или введите свою:", topic)
+	text := fmt.Sprintf("⏰ *Выбор длительности опроса*\n\n📋 **Тема:** %s\n\nВыберите длительность:", topic)
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -312,9 +234,6 @@ func showDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📅 1 день", "poll_duration:24h"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✏️ Свое значение", "poll_duration_custom"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
@@ -418,7 +337,7 @@ func formatQueueResults(topic string, voters []voters.TelegramVoterDTO) string {
 	sb.WriteString("\n\n")
 
 	if len(voters) == 0 {
-		sb.WriteString("😔 Никто не идет")
+		sb.WriteString("😔 Никто не участвует в опросе")
 		return sb.String()
 	}
 

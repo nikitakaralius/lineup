@@ -32,7 +32,7 @@ func (s *Repository) UpsertVote(ctx context.Context, pollID string, u tgbotapi.U
 
 func (s *Repository) GetComingVoters(ctx context.Context, pollID string) ([]TelegramVoterDTO, error) {
 	// Option index 0 corresponds to "coming"
-	rows, err := s.DB.Query(ctx, `SELECT user_id, COALESCE(username,''), COALESCE(name,'') FROM poll_votes WHERE poll_id=$1 AND 0 = ANY(option_ids) ORDER BY updated_at ASC`, pollID)
+	rows, err := s.DB.Query(ctx, `SELECT user_id, COALESCE(username,''), COALESCE(name,'') FROM poll_votes WHERE poll_id=$1 AND 0 = ANY(option_ids)`, pollID)
 	if err != nil {
 		return nil, err
 	}
