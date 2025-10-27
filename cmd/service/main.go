@@ -107,9 +107,6 @@ func main() {
 			if update.Message != nil {
 				handlers.HandleMessage(r.Context(), bot, pollsRepo, update.Message, me, pollsService)
 			}
-			if update.CallbackQuery != nil {
-				handlers.HandleCallback(r.Context(), bot, pollsRepo, votersRepo, update.CallbackQuery, me, pollsService)
-			}
 			if update.PollAnswer != nil {
 				handlers.HandlePollAnswer(r.Context(), votersRepo, update.PollAnswer)
 			}
@@ -132,9 +129,6 @@ func main() {
 			case update := <-updates:
 				if update.Message != nil {
 					handlers.HandleMessage(ctx, bot, pollsRepo, update.Message, me, pollsService)
-				}
-				if update.CallbackQuery != nil {
-					handlers.HandleCallback(ctx, bot, pollsRepo, votersRepo, update.CallbackQuery, me, pollsService)
 				}
 				if update.PollAnswer != nil {
 					handlers.HandlePollAnswer(ctx, votersRepo, update.PollAnswer)

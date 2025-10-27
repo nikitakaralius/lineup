@@ -27,11 +27,6 @@ func HandleMessage(
 		return
 	}
 
-	// Check if user is in poll creation flow
-	if handlePollCreationInput(ctx, bot, store, msg, pollsService) {
-		return
-	}
-
 	// Trigger on /poll command or mention of bot username
 	triggered := false
 	if msg.IsCommand() && msg.Command() == "poll" {
@@ -54,132 +49,16 @@ func HandleMessage(
 		return
 	}
 
-	// If no arguments provided, show interactive poll creation
-	if strings.TrimSpace(text) == "" {
-		showInteractivePollCreation(ctx, bot, msg.Chat.ID, msg.From.ID)
-		return
-	}
-
-	// Legacy support: parse old format "Topic | 30m"
 	topic, dur, err := parseTopicAndDuration(text)
 	if err != nil {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "💡 *Создание опроса*\n\nИспользуйте команду `/poll` без параметров для интерактивного создания опроса.\n\nИли используйте старый формат: `/poll Тема | 30m`")
-		reply.ParseMode = "Markdown"
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "Usage: /poll Topic | 30m  (duration in Go format, e.g., 10m, 1h). Example: /poll Math practice | 45m")
 		reply.ReplyToMessageID = msg.MessageID
 		bot.Send(reply)
 		return
 	}
 
-	// Create poll using legacy format
-	createPoll(ctx, bot, store, msg, topic, dur, pollsService)
-}
-
-func parseTopicAndDuration(s string) (string, time.Duration, error) {
-	// Expect format: "Topic | 30m" or "Topic 30m"
-	// We'll split on '|' first; if not present, split by last space
-	raw := s
-	// Trim leading/trailing spaces
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", 0, fmt.Errorf("empty input")
-	}
-	if i := strings.Index(raw, "|"); i >= 0 {
-		topic := strings.TrimSpace(raw[:i])
-		durStr := strings.TrimSpace(raw[i+1:])
-		dur, err := time.ParseDuration(durStr)
-		if err != nil || topic == "" {
-			return "", 0, fmt.Errorf("bad format")
-		}
-		return topic, dur, nil
-	}
-	// No pipe, use last space
-	lastSpace := strings.LastIndex(raw, " ")
-	if lastSpace < 0 {
-		return "", 0, fmt.Errorf("bad format")
-	}
-	topic := strings.TrimSpace(raw[:lastSpace])
-	durStr := strings.TrimSpace(raw[lastSpace+1:])
-	dur, err := time.ParseDuration(durStr)
-	if err != nil || topic == "" {
-		return "", 0, fmt.Errorf("bad format")
-	}
-	return topic, dur, nil
-}
-
-func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *polls.Repository, msg *tgbotapi.Message, pollsService polls.Service) bool {
-	stateKey := fmt.Sprintf("%d_%d", msg.Chat.ID, msg.From.ID)
-	state, exists := pollCreationStates[stateKey]
-	if !exists {
-		return false
-	}
-
-	if state.Step == "topic" {
-		// User entered topic
-		topic := strings.TrimSpace(msg.Text)
-		if topic == "" {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Тема не может быть пустой. Попробуйте ещё раз:")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-
-		state.Topic = topic
-		state.Step = "duration"
-
-		// Show duration selection
-		text := fmt.Sprintf("⏰ *Выбор длительности опроса*\n\n📋 **Тема:** %s\n\nВыберите длительность:", topic)
-
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("⏱ 15 минут", "poll_duration:15m"),
-				tgbotapi.NewInlineKeyboardButtonData("⏰ 30 минут", "poll_duration:30m"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🕐 1 час", "poll_duration:1h"),
-				tgbotapi.NewInlineKeyboardButtonData("🕕 2 часа", "poll_duration:2h"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🕘 4 часа", "poll_duration:4h"),
-				tgbotapi.NewInlineKeyboardButtonData("🌅 12 часов", "poll_duration:12h"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("📅 1 день", "poll_duration:24h"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
-			),
-		)
-
-		reply := tgbotapi.NewMessage(msg.Chat.ID, text)
-		reply.ParseMode = "Markdown"
-		reply.ReplyMarkup = keyboard
-		bot.Send(reply)
-		return true
-	}
-
-	return false
-}
-
-func showInteractivePollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, userID int64) {
-	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-	pollCreationStates[stateKey] = &PollCreationState{Step: "topic"}
-
-	text := "📝 *Создание опроса*\n\nВведите тему опроса:"
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
-		),
-	)
-
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.ParseMode = "Markdown"
-	msg.ReplyMarkup = keyboard
-	bot.Send(msg)
-}
-
-func createPoll(ctx context.Context, bot *tgbotapi.BotAPI, store *polls.Repository, msg *tgbotapi.Message, topic string, dur time.Duration, pollsService polls.Service) {
-	// Create poll with Russian options
-	pollCfg := tgbotapi.NewPoll(msg.Chat.ID, topic, []string{"участвую", "не участвую"}...)
+	// Create poll
+	pollCfg := tgbotapi.NewPoll(msg.Chat.ID, topic, []string{"coming", "not coming"}...)
 	pollCfg.IsAnonymous = false
 	pollCfg.AllowsMultipleAnswers = false
 	sent, err := bot.Send(pollCfg)
@@ -219,14 +98,36 @@ func createPoll(ctx context.Context, bot *tgbotapi.BotAPI, store *polls.Reposito
 			log.Printf("enqueue finish poll error: %v", err)
 		}
 	}
+}
 
-	// Send confirmation message
-	confirmText := fmt.Sprintf("✅ *Опрос создан!*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n🕐 **Завершится:** %s",
-		topic,
-		formatDuration(dur),
-		p.EndsAt.Format("15:04 02.01.2006"))
-
-	confirmMsg := tgbotapi.NewMessage(msg.Chat.ID, confirmText)
-	confirmMsg.ParseMode = "Markdown"
-	bot.Send(confirmMsg)
+func parseTopicAndDuration(s string) (string, time.Duration, error) {
+	// Expect format: "Topic | 30m" or "Topic 30m"
+	// We'll split on '|' first; if not present, split by last space
+	raw := s
+	// Trim leading/trailing spaces
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", 0, fmt.Errorf("empty input")
+	}
+	if i := strings.Index(raw, "|"); i >= 0 {
+		topic := strings.TrimSpace(raw[:i])
+		durStr := strings.TrimSpace(raw[i+1:])
+		dur, err := time.ParseDuration(durStr)
+		if err != nil || topic == "" {
+			return "", 0, fmt.Errorf("bad format")
+		}
+		return topic, dur, nil
+	}
+	// No pipe, use last space
+	lastSpace := strings.LastIndex(raw, " ")
+	if lastSpace < 0 {
+		return "", 0, fmt.Errorf("bad format")
+	}
+	topic := strings.TrimSpace(raw[:lastSpace])
+	durStr := strings.TrimSpace(raw[lastSpace+1:])
+	dur, err := time.ParseDuration(durStr)
+	if err != nil || topic == "" {
+		return "", 0, fmt.Errorf("bad format")
+	}
+	return topic, dur, nil
 }
