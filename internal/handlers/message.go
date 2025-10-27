@@ -173,32 +173,6 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 		return true
 	}
 
-	if state.Step == "topic_custom" {
-		// User entered custom topic
-		topic := strings.TrimSpace(msg.Text)
-		if topic == "" {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Тема не может быть пустой. Попробуйте ещё раз:")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-
-		// Basic validation - reasonable length
-		if len(topic) > 100 {
-			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Тема слишком длинная. Максимум: 100 символов.")
-			reply.ReplyToMessageID = msg.MessageID
-			bot.Send(reply)
-			return true
-		}
-
-		state.Topic = topic
-		state.Step = "duration"
-
-		// Show duration selection
-		showDurationSelection(ctx, bot, msg.Chat.ID, 0, msg.From.ID, topic)
-		return true
-	}
-
 	if state.Step == "duration_custom" {
 		// User entered custom duration
 		durationStr := strings.TrimSpace(msg.Text)
@@ -279,9 +253,6 @@ func showInteractivePollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🏛️ Сбер", "poll_topic:Сбер"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✏️ Свое значение", "poll_topic_custom"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),

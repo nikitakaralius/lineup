@@ -50,8 +50,6 @@ func HandleCallback(
 		handleStartPollCreation(ctx, bot, chatID, messageID, userID)
 	case strings.HasPrefix(data, "poll_topic:"):
 		handleTopicSelection(ctx, bot, chatID, messageID, userID, data)
-	case data == "poll_topic_custom":
-		handleCustomTopicInput(ctx, bot, chatID, messageID, userID)
 	case strings.HasPrefix(data, "poll_duration:"):
 		handleDurationSelection(ctx, bot, pollsRepo, chatID, messageID, userID, data, pollsService)
 	case data == "poll_duration_custom":
@@ -62,8 +60,6 @@ func HandleCallback(
 		handleBackToPollCreation(ctx, bot, chatID, messageID, userID)
 	case data == "poll_back_to_duration":
 		handleBackToDurationSelection(ctx, bot, chatID, messageID, userID)
-	case data == "poll_back_to_topic":
-		handleBackToTopicSelection(ctx, bot, chatID, messageID, userID)
 	case data == "poll_cancel":
 		handleCancelPollCreation(ctx, bot, chatID, messageID, userID)
 	case strings.HasPrefix(data, "queue_exit:"):
@@ -248,18 +244,6 @@ func handleBackToPollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID 
 	}
 }
 
-func handleBackToTopicSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
-	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-	state, exists := pollCreationStates[stateKey]
-	if !exists || state.Step != "topic_custom" {
-		return
-	}
-
-	// Go back to topic selection
-	state.Step = "topic"
-	showTopicSelection(ctx, bot, chatID, messageID, userID)
-}
-
 func handleBackToDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
 	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
 	state, exists := pollCreationStates[stateKey]
@@ -282,34 +266,6 @@ func handleCancelPollCreation(ctx context.Context, bot *tgbotapi.BotAPI, chatID 
 	bot.Send(edit)
 }
 
-func handleCustomTopicInput(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
-	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-	state, exists := pollCreationStates[stateKey]
-	if !exists || state.Step != "topic" {
-		return
-	}
-
-	// Update state to custom topic input
-	state.Step = "topic_custom"
-
-	// Show custom topic input prompt
-	text := "✏️ *Ввод темы*\n\nВведите тему опроса:\n\nПример: `Базы данных`, `Стрельба из лука`, `Battlefield 6`"
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "poll_back_to_topic"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
-		),
-	)
-
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
-	edit.ParseMode = "Markdown"
-	edit.ReplyMarkup = &keyboard
-	bot.Send(edit)
-}
-
 func handleCustomDurationInput(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
 	stateKey := fmt.Sprintf("%d_%d", chatID, userID)
 	state, exists := pollCreationStates[stateKey]
@@ -326,39 +282,6 @@ func handleCustomDurationInput(ctx context.Context, bot *tgbotapi.BotAPI, chatID
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "poll_back_to_duration"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
-		),
-	)
-
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
-	edit.ParseMode = "Markdown"
-	edit.ReplyMarkup = &keyboard
-	bot.Send(edit)
-}
-
-func showTopicSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, messageID int, userID int64) {
-	text := "📝 *Создание опроса*\n\nВыберите тему опроса или введите свою:"
-
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 Анализ данных", "poll_topic:Анализ данных"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔒 Информационная безопасность", "poll_topic:Информационная безопасность"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🤖 Промпт инжениринг", "poll_topic:Промпт инжениринг"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🎨 Интерфейсы", "poll_topic:Интерфейсы"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🏛️ Сбер", "poll_topic:Сбер"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("✏️ Свое значение", "poll_topic_custom"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
@@ -495,13 +418,11 @@ func formatQueueResults(topic string, voters []voters.TelegramVoterDTO) string {
 	sb.WriteString("\n\n")
 
 	if len(voters) == 0 {
-		sb.WriteString("😔 *Никто не идет*\n\n")
-		sb.WriteString("💡 Используйте кнопки ниже, чтобы присоединиться к очереди!")
+		sb.WriteString("😔 Никто не идет")
 		return sb.String()
 	}
 
 	sb.WriteString(fmt.Sprintf("👥 *Участников:* %d\n\n", len(voters)))
-	sb.WriteString("🏆 *Очередь участников:*\n")
 
 	for i, voter := range voters {
 		sb.WriteString(fmt.Sprintf("%d. ", i+1))
@@ -521,7 +442,6 @@ func formatQueueResults(topic string, voters []voters.TelegramVoterDTO) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("\n💡 *Используйте кнопки ниже для управления очередью*")
 	return sb.String()
 }
 
