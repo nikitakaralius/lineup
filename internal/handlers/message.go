@@ -201,15 +201,6 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 		state.Topic = topic
 		state.Step = "duration"
 
-		// Update the initial poll creation message to remove buttons and show selected topic
-		if state.MessageID != 0 {
-			updatedText := fmt.Sprintf("📝 *Создание опроса*\n\n✅ **Тема:** %s", topic)
-			edit := tgbotapi.NewEditMessageText(msg.Chat.ID, state.MessageID, updatedText)
-			edit.ParseMode = "Markdown"
-			edit.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}}
-			bot.Send(edit)
-		}
-
 		// Show duration selection
 		showDurationSelection(ctx, bot, msg.Chat.ID, 0, msg.From.ID, topic)
 		return true
@@ -249,27 +240,16 @@ func handlePollCreationInput(ctx context.Context, bot *tgbotapi.BotAPI, store *p
 			return true
 		}
 
-		formattedDur := formatDuration(duration)
-		updatedText := fmt.Sprintf("📝 *Создание опроса*\n\n✅ **Тема:** %s\n⏰ **Длительность:** %s\n", state.Topic, formattedDur)
-		edit := tgbotapi.NewEditMessageText(chatID, state.MessageID, updatedText)
-		edit.ParseMode = "Markdown"
-		edit.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}}
-		bot.Send(edit)
-
 		state.Duration = duration
 		state.Step = "confirm"
 
 		// Show confirmation (clean interface without navigation buttons after custom input)
 		text := fmt.Sprintf("✅ *Подтверждение опроса*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n\nВсё правильно?",
-			state.Topic, formattedDur)
+			state.Topic, formatDuration(duration))
 
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
 				tgbotapi.NewInlineKeyboardButtonData("✅ Создать", "poll_confirm"),
-				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "poll_back"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "poll_cancel"),
 			),
 		)
 

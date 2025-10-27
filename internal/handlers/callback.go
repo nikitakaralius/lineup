@@ -143,17 +143,9 @@ func handleDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, pollsRep
 	state.Duration = duration
 	state.Step = "confirm"
 
-	// Update the message to show selected topic and remove cancel button
-	formattedDur := formatDuration(duration)
-	updatedText := fmt.Sprintf("📝 *Создание опроса*\n\n✅ **Тема:** %s\n⏰ **Длительность:** %s\n", state.Topic, formattedDur)
-	edit := tgbotapi.NewEditMessageText(chatID, messageID, updatedText)
-	edit.ParseMode = "Markdown"
-	edit.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{}}
-	bot.Send(edit)
-
 	// Show confirmation
 	text := fmt.Sprintf("✅ *Подтверждение опроса*\n\n📋 **Тема:** %s\n⏰ **Длительность:** %s\n\nВсё правильно?",
-		state.Topic, formattedDur)
+		state.Topic, formatDuration(duration))
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
@@ -165,7 +157,7 @@ func handleDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, pollsRep
 		),
 	)
 
-	edit = tgbotapi.NewEditMessageText(chatID, messageID, text)
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
 	edit.ParseMode = "Markdown"
 	edit.ReplyMarkup = &keyboard
 	bot.Send(edit)
@@ -406,21 +398,10 @@ func showDurationSelection(ctx context.Context, bot *tgbotapi.BotAPI, chatID int
 		),
 	)
 
-	if messageID == 0 {
-		// Create new message (for custom topic input flow)
-		msg := tgbotapi.NewMessage(chatID, text)
-		msg.ParseMode = "Markdown"
-		msg.ReplyMarkup = keyboard
-		sent, _ := bot.Send(msg)
-		stateKey := fmt.Sprintf("%d_%d", chatID, userID)
-		pollCreationStates[stateKey].MessageID = sent.MessageID
-	} else {
-		// Edit existing message (for callback flows)
-		edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
-		edit.ParseMode = "Markdown"
-		edit.ReplyMarkup = &keyboard
-		bot.Send(edit)
-	}
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+	edit.ParseMode = "Markdown"
+	edit.ReplyMarkup = &keyboard
+	bot.Send(edit)
 }
 
 func handleQueueExit(ctx context.Context, bot *tgbotapi.BotAPI, pollsRepo *polls.Repository, votersRepo *voters.Repository, callback *tgbotapi.CallbackQuery, data string) {
