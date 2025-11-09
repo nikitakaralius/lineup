@@ -16,7 +16,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/nikitkaralius/lineup/internal/handlers"
+	"github.com/nikitkaralius/lineup/internal/llm"
 	"github.com/nikitkaralius/lineup/internal/polls"
+	"github.com/nikitkaralius/lineup/internal/queue"
 	"github.com/nikitkaralius/lineup/internal/voters"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -25,6 +27,7 @@ import (
 // config holds environment configuration
 type config struct {
 	TelegramBotToken string
+	OpenAIAPIKey     string
 	DatabaseDSN      string
 	LogVerbose       bool
 	HTTPAddr         string
@@ -50,6 +53,11 @@ func main() {
 		log.Fatal("env TELEGRAM_BOT_TOKEN is required")
 	}
 
+	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
+	if cfg.OpenAIAPIKey == "" {
+		log.Fatal("env OPENAI_API_KEY is required")
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -71,6 +79,15 @@ func main() {
 
 	pollsRepo := polls.NewRepository(dbPool)
 	votersRepo := voters.NewRepository(dbPool)
+
+	// Initialize LLM client
+	llmClient, err := llm.NewClient(ctx, cfg.OpenAIAPIKey)
+	if err != nil {
+		log.Fatalf("failed to create LLM client: %v", err)
+	}
+
+	// Initialize queue service
+	queueService := queue.NewService(pollsRepo, votersRepo, bot, llmClient)
 
 	riverClient, err := river.NewClient(riverpgxv5.New(dbPool), &river.Config{})
 	if err != nil {
@@ -105,7 +122,7 @@ func main() {
 				return
 			}
 			if update.Message != nil {
-				handlers.HandleMessage(r.Context(), bot, pollsRepo, update.Message, me, pollsService)
+				handlers.HandleMessage(r.Context(), bot, pollsRepo, update.Message, me, pollsService, llmClient, queueService)
 			}
 			if update.PollAnswer != nil {
 				handlers.HandlePollAnswer(r.Context(), votersRepo, update.PollAnswer)
@@ -128,7 +145,7 @@ func main() {
 				return
 			case update := <-updates:
 				if update.Message != nil {
-					handlers.HandleMessage(ctx, bot, pollsRepo, update.Message, me, pollsService)
+					handlers.HandleMessage(ctx, bot, pollsRepo, update.Message, me, pollsService, llmClient, queueService)
 				}
 				if update.PollAnswer != nil {
 					handlers.HandlePollAnswer(ctx, votersRepo, update.PollAnswer)

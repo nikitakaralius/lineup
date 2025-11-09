@@ -44,6 +44,7 @@ services:
         condition: service_completed_successfully
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       POSTGRES_DSN: postgres://lineup:lineup@db:5432/lineup?sslmode=disable
     command:
       - -dsn
@@ -64,6 +65,7 @@ services:
         condition: service_completed_successfully
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     command:
       - -dsn
       - postgres://lineup:lineup@db:5432/lineup?sslmode=disable
