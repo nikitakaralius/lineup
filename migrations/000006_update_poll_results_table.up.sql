@@ -1,0 +1,4 @@
+ALTER TABLE poll_results
+DROP COLUMN IF EXISTS results_text,
+ADD COLUMN IF NOT EXISTS queue_user_ids BIGINT[] DEFAULT ARRAY[]::BIGINT[];
+
