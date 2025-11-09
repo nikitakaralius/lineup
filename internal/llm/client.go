@@ -29,6 +29,7 @@ func NewClient(ctx context.Context, apiKey, folderID string) (*Client, error) {
 		option.WithAPIKey(apiKey),
 		option.WithBaseURL("https://llm.api.cloud.yandex.net/v1"),
 		option.WithHeader("OpenAI-Project", folderID),
+		option.WithRequestTimeout(15 * time.Second),
 	}
 
 	// Create OpenAI-compatible client with Yandex configuration
