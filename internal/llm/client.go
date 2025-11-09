@@ -11,25 +11,40 @@ import (
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/firebase/genkit/go/plugins/compat_oai/openai"
 	"github.com/nikitkaralius/lineup/internal/polls"
+	"github.com/openai/openai-go/option"
 )
 
 // Client wraps Genkit for LLM operations.
 type Client struct {
 	genkit *genkit.Genkit
 	model  ai.Model
-	openai *openai.OpenAI
 }
 
-// NewClient creates a new LLM client with Genkit and OpenAI.
-func NewClient(ctx context.Context, apiKey string) (*Client, error) {
-	oai := &openai.OpenAI{APIKey: apiKey}
+// NewClient creates a new LLM client with Genkit and Yandex GPT.
+// apiKey: Yandex Cloud API key
+// folderID: Yandex Cloud folder ID (e.g., "b1gqd6223i334ob9lgjc")
+func NewClient(ctx context.Context, apiKey, folderID string) (*Client, error) {
+	// Configure Yandex GPT options
+	opts := []option.RequestOption{
+		option.WithAPIKey(apiKey),
+		option.WithBaseURL("https://llm.api.cloud.yandex.net/v1"),
+		option.WithHeader("OpenAI-Project", folderID),
+	}
+
+	// Create OpenAI-compatible client with Yandex configuration
+	oai := &openai.OpenAI{
+		APIKey: apiKey,
+		Opts:   opts,
+	}
 	g := genkit.Init(ctx, genkit.WithPlugins(oai))
-	model := oai.Model(g, "gpt-4o-mini")
+
+	// Use Yandex GPT model format: gpt://{folder_id}/{model_name}
+	modelName := fmt.Sprintf("gpt://%s/yandexgpt-lite/latest", folderID)
+	model := oai.Model(g, modelName)
 
 	return &Client{
 		genkit: g,
 		model:  model,
-		openai: oai,
 	}, nil
 }
 
@@ -74,7 +89,7 @@ IMPORTANT:
 If the user specifies custom answers, you MUST identify which one means "Иду" (going/attending). 
 If you cannot determine which answer means "Иду", you must return an error message asking the user to specify explicitly.
 
-Parse the following user input and return ONLY valid JSON in this exact format:
+Parse the following user input and return ONLY valid JSON in this exact format (DO NOT wrap in markdown code blocks, return raw JSON only):
 {
   "topic": "string",
   "duration": "string (e.g., 30m, 1h)" (optional if end_time is provided),
@@ -82,6 +97,8 @@ Parse the following user input and return ONLY valid JSON in this exact format:
   "answers": ["string"] (optional, omit if not specified),
   "coming_answer_index": int (0-based index, required if answers are specified)
 }
+
+IMPORTANT: Return ONLY the raw JSON object, without any markdown formatting, code blocks, or additional text.
 
 If you cannot parse the intent, return ONLY an error message (not JSON) explaining:
 - What field is missing (topic, duration/end_time, or coming_answer_index if custom answers)
@@ -99,6 +116,9 @@ User input: `, currentDate, currentDateTime, currentYear, currentDate, currentYe
 	}
 
 	content := strings.TrimSpace(resp.Text())
+
+	// Strip markdown code blocks if present (fallback in case LLM still adds them)
+	content = stripMarkdownCodeBlocks(content)
 
 	// Check if LLM returned an error message instead of JSON
 	// If content doesn't start with {, it's likely an error message
@@ -133,16 +153,42 @@ User input: `, currentDate, currentDateTime, currentYear, currentDate, currentYe
 	return &intent, nil
 }
 
+// stripMarkdownCodeBlocks removes markdown code block markers from the content.
+// Handles formats like ```json\n{...}\n``` or ```\n{...}\n```
+// This is a fallback in case LLM still adds markdown despite instructions.
+func stripMarkdownCodeBlocks(content string) string {
+	content = strings.TrimSpace(content)
+
+	// Remove opening code block markers (```json, ```, etc.)
+	if strings.HasPrefix(content, "```") {
+		// Find the first newline after ```
+		idx := strings.Index(content, "\n")
+		if idx != -1 {
+			content = content[idx+1:]
+		} else {
+			// No newline, just remove the ```
+			content = strings.TrimPrefix(content, "```")
+		}
+	}
+
+	// Remove closing code block markers
+	content = strings.TrimSuffix(content, "```")
+
+	return strings.TrimSpace(content)
+}
+
 // ParseQueueIntent uses LLM to parse user intent for queue operations (join/leave).
 func (c *Client) ParseQueueIntent(ctx context.Context, text string) (*QueueIntent, error) {
 	prompt := `You are a helpful assistant that parses user requests in Russian or English for queue operations.
 
 The user wants to either join or leave a queue. Parse the following text and determine the intent.
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON in this exact format (DO NOT wrap in markdown code blocks, return raw JSON only):
 {
   "action": "join" or "leave"
 }
+
+IMPORTANT: Return ONLY the raw JSON object, without any markdown formatting, code blocks, or additional text.
 
 Common Russian phrases:
 - Join: "хочу в очередь", "добавь меня", "я иду", "запиши меня", "join", "add me"
@@ -159,6 +205,9 @@ User input: ` + text
 	}
 
 	content := strings.TrimSpace(resp.Text())
+
+	// Strip markdown code blocks if present (fallback in case LLM still adds them)
+	content = stripMarkdownCodeBlocks(content)
 
 	var intent QueueIntent
 	if err := json.Unmarshal([]byte(content), &intent); err != nil {

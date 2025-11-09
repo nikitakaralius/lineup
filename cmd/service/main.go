@@ -27,7 +27,8 @@ import (
 // config holds environment configuration
 type config struct {
 	TelegramBotToken string
-	OpenAIAPIKey     string
+	YandexAPIKey     string
+	YandexFolderID   string
 	DatabaseDSN      string
 	LogVerbose       bool
 	HTTPAddr         string
@@ -53,9 +54,14 @@ func main() {
 		log.Fatal("env TELEGRAM_BOT_TOKEN is required")
 	}
 
-	cfg.OpenAIAPIKey = os.Getenv("OPENAI_API_KEY")
-	if cfg.OpenAIAPIKey == "" {
-		log.Fatal("env OPENAI_API_KEY is required")
+	cfg.YandexAPIKey = os.Getenv("YANDEX_API_KEY")
+	if cfg.YandexAPIKey == "" {
+		log.Fatal("env YANDEX_API_KEY is required")
+	}
+
+	cfg.YandexFolderID = os.Getenv("YANDEX_FOLDER_ID")
+	if cfg.YandexFolderID == "" {
+		log.Fatal("env YANDEX_FOLDER_ID is required")
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -81,7 +87,7 @@ func main() {
 	votersRepo := voters.NewRepository(dbPool)
 
 	// Initialize LLM client
-	llmClient, err := llm.NewClient(ctx, cfg.OpenAIAPIKey)
+	llmClient, err := llm.NewClient(ctx, cfg.YandexAPIKey, cfg.YandexFolderID)
 	if err != nil {
 		log.Fatalf("failed to create LLM client: %v", err)
 	}

@@ -23,7 +23,8 @@ WORKDIR /app
 COPY --from=builder /workspace/lineup-bot-service .
 USER 65532:65532
 ENV TELEGRAM_BOT_TOKEN=""
-ENV OPENAI_API_KEY=""
+ENV YANDEX_API_KEY=""
+ENV YANDEX_FOLDER_ID=""
 ENTRYPOINT ["/app/lineup-bot-service"]
 
 # worker
@@ -32,7 +33,6 @@ WORKDIR /app
 COPY --from=builder /workspace/lineup-bot-worker .
 USER 65532:65532
 ENV TELEGRAM_BOT_TOKEN=""
-ENV OPENAI_API_KEY=""
 ENTRYPOINT ["/app/lineup-bot-worker"]
 
 
